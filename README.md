@@ -1,49 +1,63 @@
-// Arduino code for hemolysis percentage via 540 nm absorbance
+#define LED_PIN        9    // Digital pin driving the green LED (~540 nm)
+#define PD_TRANSM_PIN  A0   // Analog pin for transmitted light photodiode
+#define PD_REFLECT_PIN A1   // Analog pin for reflected (reference) photodiode
 
-const int LED_PIN = 9;               // LED drive pin (green ~540 nm)
-const int PD_REF_PIN = A0;           // Reference photodiode (incident light)
-const int PD_SAMPLE_PIN = A1;        // Sample photodiode (transmitted light)
-const float ABS_FULL = 1.0;          // Calibrated absorbance for 100% hemolysis (HiCN standard)
-// (Set ABS_FULL = A_full measured during calibration)
+// Calibration constants (determined from HiCN standard curve)
+const float slope = 1.23;      // example value: (Δ[Hb]/ΔA)
+const float intercept = 0.05;  // example offset [g/dL]
+
+// Blood sample parameters (input known values)
+const float Hct = 45.0;    // Hematocrit in percent (e.g., 45%)
+const float totalHb = 15.0; // Total hemoglobin in g/dL (patient’s total Hb)
 
 void setup() {
   pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, LOW);        // Start with LED off
+  digitalWrite(LED_PIN, LOW);   // Ensure LED starts off
   Serial.begin(9600);
 }
 
 void loop() {
-  // Measure dark (ambient) with LED off
-  digitalWrite(LED_PIN, LOW);
-  delay(50);
-  int darkRef = analogRead(PD_REF_PIN);
-  int darkSample = analogRead(PD_SAMPLE_PIN);
-
-  // Turn LED on and measure light signals
+  // Turn on LED and let it stabilize
   digitalWrite(LED_PIN, HIGH);
-  delay(50);
-  int rawRef = analogRead(PD_REF_PIN);
-  int rawSample = analogRead(PD_SAMPLE_PIN);
+  delay(10);
 
-  // Compute net signal by subtracting dark current
-  int I_ref = max(rawRef - darkRef, 1);     // avoid division by zero
-  int I_samp = max(rawSample - darkSample, 1);
+  // Read photodiodes with LED on
+  int rawTrans = analogRead(PD_TRANSM_PIN);
+  int rawRef   = analogRead(PD_REFLECT_PIN);
 
-  // Compute absorbance: A = log10(I_ref / I_samp)
-  float ratio = float(I_ref) / float(I_samp);
-  float absorbance = log10(ratio);
+  // Turn off LED and read ambient (dark) values immediately
+  digitalWrite(LED_PIN, LOW);
+  delay(5);
+  int darkTrans = analogRead(PD_TRANSM_PIN);
+  int darkRef   = analogRead(PD_REFLECT_PIN);
 
-  // Compute hemolysis percentage using calibrated full-lysis absorbance
-  float hemolysisPercent = (absorbance / ABS_FULL) * 100.0;
-  if (hemolysisPercent > 100.0) hemolysisPercent = 100.0;
-  if (hemolysisPercent < 0.0) hemolysisPercent = 0.0;
+  // Net signals (subtract ambient)
+  float I_trans = (float)(rawTrans - darkTrans);
+  float I_ref   = (float)(rawRef   - darkRef);
 
-  // Output results
-  Serial.print("Absorbance = ");
-  Serial.print(absorbance, 3);
-  Serial.print("   Hemolysis = ");
-  Serial.print(hemolysisPercent, 1);
-  Serial.println("%");
+  // Prevent division by zero
+  if (I_trans <= 0 || I_ref <= 0) {
+    Serial.println("Error: Invalid photodiode readings!");
+    delay(1000);
+    return;
+  }
 
-  delay(500);  // sample rate (~2 readings per second)
+  // Compute absorbance A = log10(I_ref / I_trans):contentReference[oaicite:3]{index=3}
+  float absorbance = log10(I_ref / I_trans);
+
+  // Convert absorbance to free hemoglobin concentration (g/dL)
+  float freeHb = slope * absorbance + intercept; // Calibration line
+  
+  // Compute percentage hemolysis using known Hct and total Hb:contentReference[oaicite:4]{index=4}
+  float hemolysisPct = ((100.0 - Hct) * freeHb) / totalHb;
+
+  // Output the results
+  Serial.print("Free Hb (g/dL): ");
+  Serial.println(freeHb, 2);
+  Serial.print("% Hemolysis: ");
+  Serial.println(hemolysisPct * 100.0, 2); // if desired, multiply by 100
+  Serial.println("------------");
+  
+  // Repeat measurement every 100 ms (adjust as needed up to 2 s total)
+  delay(100);
 }
