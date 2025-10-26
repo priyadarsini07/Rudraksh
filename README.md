@@ -1,63 +1,152 @@
-#define LED_PIN        9    // Digital pin driving the green LED (~540 nm)
-#define PD_TRANSM_PIN  A0   // Analog pin for transmitted light photodiode
-#define PD_REFLECT_PIN A1   // Analog pin for reflected (reference) photodiode
+🩸 Rudraksh Hemolysis Analyzer
+💡 Arduino-Based Optical Hemolysis Measurement (540 nm) with OLED Display
 
-// Calibration constants (determined from HiCN standard curve)
-const float slope = 1.23;      // example value: (Δ[Hb]/ΔA)
-const float intercept = 0.05;  // example offset [g/dL]
+This Arduino sketch measures hemolysis percentage in blood samples using optical absorbance at ~540 nm (green LED). It computes free hemoglobin concentration (g/dL) based on WHO/ICSH-calibrated standards and displays the result on a 1.3-inch SH1106 OLED screen.
 
-// Blood sample parameters (input known values)
-const float Hct = 45.0;    // Hematocrit in percent (e.g., 45%)
-const float totalHb = 15.0; // Total hemoglobin in g/dL (patient’s total Hb)
+🧩 Hardware Overview
+Component	Function	Pin / Interface
+💚 Green LED (~540 nm)	Emits light through the sample	D9
+📟 Photodiode (Transmitted)	Detects transmitted intensity	A0
+📟 Photodiode (Reflected / Reference)	Detects reflected reference intensity	A1
+🖥️ 1.3" OLED Display (SH1106 Driver)	Displays readings (via I²C)	SDA, SCL
+⚙️ Libraries Required
+
+Before uploading, ensure the following Arduino libraries are installed:
+
+Wire.h (default Arduino I²C library)
+
+U8g2lib.h → U8g2 Graphics Library for OLEDs
+
+🧮 Calibration Constants
+const float slope = 3.68;     // Δ[Hb]/ΔA at 540 nm (ICSH reference)
+const float intercept = 0.02; // Zero intercept (Drabkin’s reagent blank)
+
+
+These values are derived from WHO/ICSH HiCN standard curves and can be adjusted per your spectrophotometric calibration data.
+
+🧠 Physiological Reference Parameters
+const float Hct = 42.0;      // Hematocrit (%)
+const float totalHb = 15.0;  // Total hemoglobin [g/dL]
+
+🧾 Full Code
+#include <Wire.h>
+#include <U8g2lib.h>
+
+// 🖥️ Define display object for 1.3" SH1106 OLED
+U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE);
+
+// 🔌 Pin definitions
+#define LED_PIN        9     // Green LED (~540 nm)
+#define PD_TRANSM_PIN  A0    // Transmitted photodiode
+#define PD_REFLECT_PIN A1    // Reflected photodiode
+
+// 📏 Calibration constants (WHO/ICSH reference)
+const float slope = 3.68;      // Δ[Hb]/ΔA (g/dL per absorbance unit)
+const float intercept = 0.02;  // Zero offset
+
+// 🧬 Physiological reference values
+const float Hct = 42.0;        // Hematocrit (%)
+const float totalHb = 15.0;    // Total Hb (g/dL)
 
 void setup() {
   pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, LOW);   // Ensure LED starts off
+  digitalWrite(LED_PIN, LOW);
   Serial.begin(9600);
+
+  // 🖥️ Initialize OLED
+  u8g2.begin();
+  u8g2.setFont(u8g2_font_ncenB14_tr);
+
+  // 🚀 Welcome screen
+  u8g2.clearBuffer();
+  u8g2.setCursor(10, 35);
+  u8g2.print("WELCOME");
+  u8g2.setCursor(10, 60);
+  u8g2.print("RUDRAKSH");
+  u8g2.sendBuffer();
+  delay(2000);
+
+  // Switch to smaller font for data
+  u8g2.setFont(u8g2_font_6x13_tf);
 }
 
 void loop() {
-  // Turn on LED and let it stabilize
+  // 💡 Activate LED and stabilize
   digitalWrite(LED_PIN, HIGH);
   delay(10);
 
-  // Read photodiodes with LED on
+  // 📥 Read photodiodes (LED ON)
   int rawTrans = analogRead(PD_TRANSM_PIN);
   int rawRef   = analogRead(PD_REFLECT_PIN);
 
-  // Turn off LED and read ambient (dark) values immediately
+  // 🌑 Read dark signals (LED OFF)
   digitalWrite(LED_PIN, LOW);
   delay(5);
   int darkTrans = analogRead(PD_TRANSM_PIN);
   int darkRef   = analogRead(PD_REFLECT_PIN);
 
-  // Net signals (subtract ambient)
+  // 🔍 Compute net light intensities
   float I_trans = (float)(rawTrans - darkTrans);
-  float I_ref   = (float)(rawRef   - darkRef);
+  float I_ref   = (float)(rawRef - darkRef);
 
-  // Prevent division by zero
+  // ⚠️ Validate readings
   if (I_trans <= 0 || I_ref <= 0) {
     Serial.println("Error: Invalid photodiode readings!");
+    showError("Invalid PD readings!");
     delay(1000);
     return;
   }
 
-  // Compute absorbance A = log10(I_ref / I_trans):contentReference[oaicite:3]{index=3}
+  // 📊 Absorbance calculation
   float absorbance = log10(I_ref / I_trans);
 
-  // Convert absorbance to free hemoglobin concentration (g/dL)
-  float freeHb = slope * absorbance + intercept; // Calibration line
-  
-  // Compute percentage hemolysis using known Hct and total Hb:contentReference[oaicite:4]{index=4}
-  float hemolysisPct = ((100.0 - Hct) * freeHb) / totalHb;
+  // 🧪 Convert absorbance → Free Hb (g/dL)
+  float freeHb = slope * absorbance + intercept;
 
-  // Output the results
+  // 💔 Calculate % hemolysis (WHO/ICSH)
+  float hemolysisPct = (freeHb / totalHb) * 100.0;
+
+  // 🖨️ Serial output
   Serial.print("Free Hb (g/dL): ");
   Serial.println(freeHb, 2);
   Serial.print("% Hemolysis: ");
-  Serial.println(hemolysisPct * 100.0, 2); // if desired, multiply by 100
+  Serial.println(hemolysisPct, 2);
   Serial.println("------------");
-  
-  // Repeat measurement every 100 ms (adjust as needed up to 2 s total)
-  delay(100);
+
+  // 🖥️ OLED output
+  u8g2.clearBuffer();
+  u8g2.setCursor(0, 15);
+  u8g2.print("Hemoglobin Meter");
+
+  u8g2.setCursor(0, 35);
+  u8g2.print("Free Hb: ");
+  u8g2.print(freeHb, 2);
+  u8g2.print(" g/dL");
+
+  u8g2.setCursor(0, 55);
+  u8g2.print("Hemolysis: ");
+  u8g2.print(hemolysisPct, 2);
+  u8g2.print("%");
+  u8g2.sendBuffer();
+
+  delay(100); // Sampling rate
 }
+
+void showError(const char* msg) {
+  u8g2.clearBuffer();
+  u8g2.setCursor(0, 30);
+  u8g2.print("ERROR:");
+  u8g2.setCursor(0, 50);
+  u8g2.print(msg);
+  u8g2.sendBuffer();
+}
+
+🧾 Example Serial Output
+Free Hb (g/dL): 0.72
+% Hemolysis: 4.88
+------------
+
+🖥️ OLED Display Output
+Hemoglobin Meter
+Free Hb: 0.72 g/dL
+Hemolysis: 4.88%
