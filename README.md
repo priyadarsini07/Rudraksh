@@ -125,10 +125,6 @@ void showError(const char* msg) {
 🧾 Example Serial Output
 Free Hb (g/dL): 0.72
 % Hemolysis: 4.88
-------------
 
-🖥️ OLED Display Output
-Hemoglobin Meter
-Free Hb: 0.72 g/dL
 Hemolysis: 4.88%
 
