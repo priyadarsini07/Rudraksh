@@ -1,23 +1,4 @@
-🩸 Rudraksh Hemolysis Analyzer
-💡 Arduino-Based Optical Hemolysis Measurement (540 nm) with OLED Display
-
-This Arduino sketch measures hemolysis percentage in blood samples using optical absorbance at ~540 nm (green LED). It computes free hemoglobin concentration (g/dL) based on WHO/ICSH-calibrated standards and displays the result on a 1.3-inch SH1106 OLED screen.
-
-🧩 Hardware Overview
-Component	Function	Pin / Interface
-💚 Green LED (~540 nm)	Emits light through the sample	D9
-📟 Photodiode (Transmitted)	Detects transmitted intensity	A0
-📟 Photodiode (Reflected / Reference)	Detects reflected reference intensity	A1
-🖥️ 1.3" OLED Display (SH1106 Driver)	Displays readings (via I²C)	SDA, SCL
-⚙️ Libraries Required
-
-Before uploading, ensure the following Arduino libraries are installed:
-
-Wire.h (default Arduino I²C library)
-
-U8g2lib.h → U8g2 Graphics Library for OLEDs
-
-🧮 Calibration Constants
+Calibration Constants
 const float slope = 3.68;     // Δ[Hb]/ΔA at 540 nm (ICSH reference)
 const float intercept = 0.02; // Zero intercept (Drabkin’s reagent blank)
 
@@ -150,3 +131,4 @@ Free Hb (g/dL): 0.72
 Hemoglobin Meter
 Free Hb: 0.72 g/dL
 Hemolysis: 4.88%
+
